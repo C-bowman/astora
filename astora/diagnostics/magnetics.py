@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from numpy import ndarray, sqrt, clip
 from scipy.special import ellipk, ellipe
+from abc import ABC, abstractmethod
 
 
 @dataclass
@@ -25,7 +26,23 @@ class CurrentData:
     computed: ndarray
 
 
-class PoloidalFieldCoil:
+class BaseFieldCoil(ABC):
+    @abstractmethod
+    def psi_prediction(self, current: float, R: ndarray, z: ndarray) -> ndarray:
+        pass
+
+    def Br_prediction(self, current: float, R: ndarray, z: ndarray, eps=1e-4) -> ndarray:
+        f1 = self.psi_prediction(current, R, z - eps)
+        f2 = self.psi_prediction(current, R, z + eps)
+        return (f1 - f2) / (2 * eps * R)
+
+    def Bz_prediction(self, current: float, R: ndarray, z: ndarray, eps=1e-4) -> ndarray:
+        f1 = self.psi_prediction(current, R - eps, z)
+        f2 = self.psi_prediction(current, R + eps, z)
+        return (f2 - f1) / (2 * eps * R)
+
+
+class PoloidalFieldCoil(BaseFieldCoil):
     def __init__(self, R_filaments: ndarray, z_filaments: ndarray):
         assert R_filaments.size == z_filaments.size
         assert R_filaments.ndim == 1 and z_filaments.ndim == 1
@@ -42,15 +59,17 @@ class PoloidalFieldCoil:
             z=z[:, None],
         ).sum(axis=1) * (current / self.n_filaments)
 
-    def Br_prediction(self, current: float, R: ndarray, z: ndarray, eps=1e-4) -> ndarray:
-        f1 = self.psi_prediction(current, R, z - eps)
-        f2 = self.psi_prediction(current, R, z + eps)
-        return (f1 - f2) / (2 * eps * R)
 
-    def Bz_prediction(self, current: float, R: ndarray, z: ndarray, eps=1e-4) -> ndarray:
-        f1 = self.psi_prediction(current, R - eps, z)
-        f2 = self.psi_prediction(current, R + eps, z)
-        return (f2 - f1) / (2 * eps * R)
+class CoilCircuit(BaseFieldCoil):
+    def __init__(self, coils: list[PoloidalFieldCoil], multipliers: list[float]):
+        self.coils = coils
+        self.multipliers = multipliers
+
+    def psi_prediction(self, current: float, R: ndarray, z: ndarray) -> ndarray:
+        return sum(
+            coil.psi_prediction(current * mult, R, z)
+            for coil, mult in zip(self.coils, self.multipliers)
+        )
 
 
 class CoilSet:
