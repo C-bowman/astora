@@ -73,7 +73,7 @@ class CoilCircuit(BaseFieldCoil):
 
 
 class CoilSet:
-    def __init__(self, coils: list[PoloidalFieldCoil]):
+    def __init__(self, coils: list[BaseFieldCoil]):
         self.coils = coils
         self.n_coils = len(coils)
 
