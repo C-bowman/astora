@@ -93,10 +93,7 @@ class PlasmaCurrentModel(DiagnosticModel):
         self.data = current_data
         self.basis = basis
 
-        self.parameters = [
-            ParameterVector(name="ln_J", size=self.basis.n_basis),
-        ]
-
+        self.parameters = [ParameterVector(name="ln_J", size=self.basis.n_basis)]
         self.field_requests = []
 
     def predictions(self, ln_J: ndarray):
@@ -107,5 +104,48 @@ class PlasmaCurrentModel(DiagnosticModel):
         predictions = basis_I.sum()
         jacobians = {
             "ln_J": basis_I.reshape(1, self.basis.n_basis),
+        }
+        return predictions, jacobians
+
+
+class MidplanePressureModel(DiagnosticModel):
+    def __init__(
+        self,
+        pressure_data,
+        basis: BasisFunction,
+        coil_set: CoilSet
+    ):
+        self.data = pressure_data
+        self.basis = basis
+        self.coils = coil_set
+
+        self.coils_Bz_matrix = self.coils.get_Bz_matrix(R=self.data.R, z=self.data.z)
+        self.basis_Bz_matrix = self.basis.get_Bz_matrix(R=self.data.R, z=self.data.z)
+        self.basis_J_matrix = self.basis.get_interpolator_matrix(R=self.data.R, z=self.data.z)
+
+        self.parameters = [
+            ParameterVector(name="ln_J", size=self.basis.n_basis),
+            ParameterVector(name="coil_currents", size=self.coils.n_coils)
+        ]
+
+        self.field_requests = []
+
+    def predictions(self, ln_J: ndarray, coil_currents: ndarray):
+        basis_J = exp(ln_J)
+        Bz = self.basis_Bz_matrix @ basis_J + self.coils_Bz_matrix @ coil_currents
+        J = self.basis_J_matrix @ basis_J
+        grad_p = J * Bz / self.data.R
+        predictions = None
+        return predictions
+
+    def predictions_and_jacobians(self, ln_J: ndarray, coil_currents: ndarray):
+        basis_J = exp(ln_J)
+        Bz = self.basis_Bz_matrix @ basis_J + self.coils_Bz_matrix @ coil_currents
+        J = self.basis_J_matrix @ basis_J
+        grad_p = J * Bz / self.data.R
+        predictions = None
+        jacobians = {
+            "ln_J": None,
+            "coil_currents": None
         }
         return predictions, jacobians
