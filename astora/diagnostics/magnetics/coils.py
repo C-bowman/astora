@@ -1,29 +1,6 @@
-from dataclasses import dataclass
-from numpy import ndarray, sqrt, clip
-from scipy.special import ellipk, ellipe
+from numpy import ndarray, zeros
 from abc import ABC, abstractmethod
-
-
-@dataclass
-class FluxloopData:
-    R: ndarray
-    z: ndarray
-    name: ndarray
-    measurements: ndarray
-    errors: ndarray
-    computed: ndarray
-
-
-@dataclass
-class FieldSensorData(FluxloopData):
-    poloidal_angle: ndarray
-
-
-@dataclass
-class CurrentData:
-    measurements: ndarray
-    errors: ndarray
-    computed: ndarray
+from astora.diagnostics.magnetics.fields import psi_from_Jtor
 
 
 class BaseFieldCoil(ABC):
@@ -95,31 +72,20 @@ class CoilSet:
             for coil, current in zip(self.coils, currents)
         )
 
+    def get_psi_matrix(self, R: ndarray, z: ndarray) -> ndarray:
+        M = zeros([R.size, self.n_coils])
+        for i, coil in self.coils:
+            M[:, i] = coil.psi_prediction(1.0, R, z)
+        return M
 
-def psi_from_Jtor(R0: ndarray, z0: ndarray, R: ndarray, z: ndarray) -> ndarray:
-    """
-    Calculates the poloidal flux at (R, Z) due to a unit, toroidally symmetric current
-    at (R0, Z0) using Greens function.
-    """
+    def get_Br_matrix(self, R: ndarray, z: ndarray) -> ndarray:
+        M = zeros([R.size, self.n_coils])
+        for i, coil in self.coils:
+            M[:, i] = coil.Br_prediction(1.0, R, z)
+        return M
 
-    # Calculate k^2
-    L = 0.25 * ((R + R0)**2 + (z - z0)**2)
-    k2 = R * R0 / L
-    # Clip to between 0 and 1 to avoid nans e.g. when coil is on grid point
-    k2 = clip(k2, 1e-10, 1.0 - 1e-10)
-    coeff = 2e-7  # mu_0 / (2 * pi)
-
-    # Note definition of ellipk, ellipe in scipy is K(k^2), E(k^2)
-    return coeff * sqrt(L) * ((2.0 - k2) * ellipk(k2) - 2.0 * ellipe(k2))
-
-
-def Br_from_Jtor(R0: ndarray, z0: ndarray, R: ndarray, z: ndarray, eps=1e-4) -> ndarray:
-    f1 = psi_from_Jtor(R0, z0, R, z - eps)
-    f2 = psi_from_Jtor(R0, z0, R, z + eps)
-    return (f1 - f2) / (2 * eps * R)
-
-
-def Bz_from_Jtor(R0: ndarray, z0: ndarray, R: ndarray, z: ndarray, eps=1e-4) -> ndarray:
-    f1 = psi_from_Jtor(R0, z0, R - eps, z)
-    f2 = psi_from_Jtor(R0, z0, R + eps, z)
-    return (f2 - f1) / (2 * eps * R)
+    def get_Bz_matrix(self, R: ndarray, z: ndarray) -> ndarray:
+        M = zeros([R.size, self.n_coils])
+        for i, coil in self.coils:
+            M[:, i] = coil.Bz_prediction(1.0, R, z)
+        return M

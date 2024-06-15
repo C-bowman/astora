@@ -1,7 +1,8 @@
-from numpy import array, sqrt, ones, ndarray
+from abc import ABC, abstractmethod
+from numpy import array, sqrt, ones, ndarray, zeros
 from tokamesh.construction import refine_mesh
 from tokamesh import TriangularMesh
-from astora.diagnostics.magnetics import psi_from_Jtor
+from astora.diagnostics.magnetics.fields import psi_from_Jtor
 
 
 def hexacone_basis_points(refinement_level=3):
@@ -27,13 +28,51 @@ def hexacone_basis_points(refinement_level=3):
     return R_centre, z_centre, weights, area
 
 
-class HexaconeBasis:
-    def __init__(self, resolution: float, refinement_level=3):
-        self.R_fil, self.z_fil, self.weights, _ = hexacone_basis_points(refinement_level)
+class BasisFunction(ABC):
+    n_basis: int
+    total_current: float
+
+    @abstractmethod
+    def get_psi_matrix(self, R: ndarray, z: ndarray) -> ndarray:
+        pass
+
+    @abstractmethod
+    def get_Br_matrix(self, R: ndarray, z: ndarray) -> ndarray:
+        pass
+
+    @abstractmethod
+    def get_Bz_matrix(self, R: ndarray, z: ndarray) -> ndarray:
+        pass
+
+
+class HexaconeBasis(BasisFunction):
+    def __init__(self, R: ndarray, z: ndarray, resolution: float, refinement_level=3):
+        self.R_basis, self.z_basis = R, z
+        self.R_fil, self.z_fil, weights, area = hexacone_basis_points(refinement_level)
         self.R_fil *= resolution
         self.z_fil *= resolution
+        self.integrator = weights * (area * resolution**2)
         self.n_filaments = self.R_fil.size
+        self.n_basis = self.R_basis.size
         self.total_current = 0.5 * sqrt(3) * resolution**2
+
+    def get_psi_matrix(self, R: ndarray, z: ndarray) -> ndarray:
+        M = zeros([R.size, self.n_basis])
+        for i in range(self.n_basis):
+            M[:, i] = self.psi_prediction(self.R_basis[i], self.z_basis[i], R, z)
+        return M
+
+    def get_Br_matrix(self, R: ndarray, z: ndarray) -> ndarray:
+        M = zeros([R.size, self.n_basis])
+        for i in range(self.n_basis):
+            M[:, i] = self.Br_prediction(self.R_basis[i], self.z_basis[i], R, z)
+        return M
+
+    def get_Bz_matrix(self, R: ndarray, z: ndarray) -> ndarray:
+        M = zeros([R.size, self.n_basis])
+        for i in range(self.n_basis):
+            M[:, i] = self.Bz_prediction(self.R_basis[i], self.z_basis[i], R, z)
+        return M
 
     def psi_prediction(self, R0: float, z0: float, R: ndarray, z: ndarray) -> ndarray:
         return psi_from_Jtor(
@@ -41,7 +80,7 @@ class HexaconeBasis:
             z0=(self.z_fil + z0)[None, :],
             R=R[:, None],
             z=z[:, None],
-        ).sum(axis=1) / self.n_filaments
+        ) @ self.integrator
 
     def Br_prediction(self, R0: float, z0: float, R: ndarray, z: ndarray, eps=1e-4) -> ndarray:
         f1 = self.psi_prediction(R0, z0, R, z - eps)
