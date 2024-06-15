@@ -5,13 +5,20 @@ from tokamesh import TriangularMesh
 from astora.diagnostics.magnetics.fields import psi_from_Jtor
 
 
+def hexagon_mesh(resolution=1.0) -> TriangularMesh:
+    a = 0.5*sqrt(3)
+    unit_hexagon = [
+        (0., 0.), (0., 1.), (a, 0.5), (a, -0.5), (0., -1), (-a, -0.5), (-a, 0.5)
+    ]
+    triangles = array([[0, i, i % 6 + 1] for i in range(1, 7)])
+    R, z = [array([p[i] for p in unit_hexagon]) for i in [0, 1]]
+    return TriangularMesh(R*resolution, z*resolution, triangles)
+
+
 def hexacone_basis_points(refinement_level=3):
     # set up a unit hexagon as a mesh
-    a = 0.5*sqrt(3)
-    points = [(0., 0.), (0., 1.), (a, 0.5), (a, -0.5), (0., -1), (-a, -0.5), (-a, 0.5)]
-    triangles = array([[0, i, i % 6 + 1] for i in range(1, 7)])
-    R, z = [array([p[i] for p in points]) for i in [0, 1]]
-    mesh = TriangularMesh(R=R.copy(), z=z.copy(), triangles=triangles.copy())
+    mesh = hexagon_mesh()
+    R, z, triangles = mesh.R.copy(), mesh.z.copy(), mesh.triangle_vertices.copy()
     # iteratively refine the mesh to divide the basis function
     # area into many identical triangles
     for _ in range(refinement_level):
@@ -44,10 +51,15 @@ class BasisFunction(ABC):
     def get_Bz_matrix(self, R: ndarray, z: ndarray) -> ndarray:
         pass
 
+    @abstractmethod
+    def get_interpolator_matrix(self, R: ndarray, z: ndarray) -> ndarray:
+        pass
+
 
 class HexaconeBasis(BasisFunction):
     def __init__(self, R: ndarray, z: ndarray, resolution: float, refinement_level=3):
         self.R_basis, self.z_basis = R, z
+        self.resolution = resolution
         self.R_fil, self.z_fil, weights, area = hexacone_basis_points(refinement_level)
         self.R_fil *= resolution
         self.z_fil *= resolution
@@ -72,6 +84,16 @@ class HexaconeBasis(BasisFunction):
         M = zeros([R.size, self.n_basis])
         for i in range(self.n_basis):
             M[:, i] = self.Bz_prediction(self.R_basis[i], self.z_basis[i], R, z)
+        return M
+
+    def get_interpolator_matrix(self, R: ndarray, z: ndarray) -> ndarray:
+        mesh = hexagon_mesh(resolution=self.resolution)
+        M = zeros([R.size, self.n_basis])
+        for i in range(self.n_basis):
+            M[:, i] = mesh.build_interpolator_matrix(
+                R - self.R_basis[i],
+                z - self.z_basis[i],
+            )[:, 0]
         return M
 
     def psi_prediction(self, R0: float, z0: float, R: ndarray, z: ndarray) -> ndarray:
