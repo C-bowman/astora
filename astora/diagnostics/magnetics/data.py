@@ -22,3 +22,11 @@ class CurrentData:
     measurements: ndarray
     errors: ndarray
     computed: ndarray
+
+
+@dataclass
+class PfCoilData:
+    measurements: ndarray
+    errors: ndarray
+    computed: ndarray
+    names: list[str]
