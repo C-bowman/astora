@@ -28,5 +28,5 @@ class CurrentData:
 class PfCoilData:
     measurements: ndarray
     errors: ndarray
-    computed: ndarray
+    times: ndarray
     names: list[str]

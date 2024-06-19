@@ -1,4 +1,4 @@
-from numpy import ndarray, zeros
+from numpy import ndarray, zeros, isclose
 from abc import ABC, abstractmethod
 from astora.diagnostics.magnetics.fields import psi_from_Jtor
 
@@ -20,21 +20,29 @@ class BaseFieldCoil(ABC):
 
 
 class PoloidalFieldCoil(BaseFieldCoil):
-    def __init__(self, R_filaments: ndarray, z_filaments: ndarray):
+    def __init__(self, R_filaments: ndarray, z_filaments: ndarray, weights: ndarray = None):
         assert R_filaments.size == z_filaments.size
         assert R_filaments.ndim == 1 and z_filaments.ndim == 1
         assert (R_filaments > 0.).all()
+        if weights is not None:
+            assert isclose(weights.sum(), 1.0)
+            assert weights.ndim == 1
+            assert weights.size == R_filaments.size
+            self.weights = weights[None, :]
+        else:
+            self.weights = 1 / R_filaments.size
+
         self.R_fil = R_filaments
         self.z_fil = z_filaments
         self.n_filaments = R_filaments.size
 
     def psi_prediction(self, current: float, R: ndarray, z: ndarray) -> ndarray:
-        return psi_from_Jtor(
+        return (self.weights * psi_from_Jtor(
             R0=self.R_fil[None, :],
             z0=self.z_fil[None, :],
             R=R[:, None],
             z=z[:, None],
-        ).sum(axis=1) * (current / self.n_filaments)
+        )).sum(axis=1) * current
 
 
 class CoilCircuit(BaseFieldCoil):
@@ -52,6 +60,7 @@ class CoilCircuit(BaseFieldCoil):
 class CoilSet:
     def __init__(self, coils: list[BaseFieldCoil]):
         self.coils = coils
+        print(self.coils)
         self.n_coils = len(coils)
 
     def psi(self, currents: ndarray, R: ndarray, z: ndarray) -> ndarray:
@@ -74,18 +83,18 @@ class CoilSet:
 
     def get_psi_matrix(self, R: ndarray, z: ndarray) -> ndarray:
         M = zeros([R.size, self.n_coils])
-        for i, coil in self.coils:
+        for i, coil in enumerate(self.coils):
             M[:, i] = coil.psi_prediction(1.0, R, z)
         return M
 
     def get_Br_matrix(self, R: ndarray, z: ndarray) -> ndarray:
         M = zeros([R.size, self.n_coils])
-        for i, coil in self.coils:
+        for i, coil in enumerate(self.coils):
             M[:, i] = coil.Br_prediction(1.0, R, z)
         return M
 
     def get_Bz_matrix(self, R: ndarray, z: ndarray) -> ndarray:
         M = zeros([R.size, self.n_coils])
-        for i, coil in self.coils:
+        for i, coil in enumerate(self.coils):
             M[:, i] = coil.Bz_prediction(1.0, R, z)
         return M
