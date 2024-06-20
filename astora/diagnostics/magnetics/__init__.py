@@ -1,5 +1,5 @@
 from .coils import BaseFieldCoil, PoloidalFieldCoil, CoilCircuit, CoilSet
-from .data import FluxloopData, FieldSensorData, CurrentData, PfCoilData
+from .data import FluxloopSpecs, FieldSensorSpecs, CoilCurrentData, ShotData
 from .fields import psi_from_Jtor
 
 __all__ = [
@@ -7,9 +7,9 @@ __all__ = [
     "PoloidalFieldCoil",
     "CoilCircuit",
     "CoilSet",
-    "FluxloopData",
-    "FieldSensorData",
-    "CurrentData",
-    "PfCoilData",
+    "FluxloopSpecs",
+    "FieldSensorSpecs",
+    "CoilCurrentData",
+    "ShotData",
     "psi_from_Jtor"
 ]
