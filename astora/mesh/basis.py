@@ -58,6 +58,9 @@ class BasisFunction(ABC):
 
 class HexaconeBasis(BasisFunction):
     def __init__(self, R: ndarray, z: ndarray, resolution: float, refinement_level=3):
+        assert R.ndim == 1 and z.ndim == 1
+        assert R.size == z.size
+
         self.R_basis, self.z_basis = R, z
         self.resolution = resolution
         self.R_fil, self.z_fil, weights, area = hexacone_basis_points(refinement_level)

@@ -94,7 +94,7 @@ class PlasmaCurrentModel(DiagnosticModel):
     def predictions(self, ln_J: ndarray):
         return exp(ln_J).sum() * self.basis.total_current
 
-    def predictions_and_jacobians(self, ln_J: ndarray):
+    def predictions_and_jacobians(self, ln_J: ndarray) -> tuple[ndarray, dict[str, ndarray]]:
         basis_I = exp(ln_J) * self.basis.total_current
         predictions = basis_I.sum()
         jacobians = {
