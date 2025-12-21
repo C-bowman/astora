@@ -20,12 +20,13 @@ class BaseFieldCoil(ABC):
 
 
 class PoloidalFieldCoil(BaseFieldCoil):
-    def __init__(self, R_filaments: ndarray, z_filaments: ndarray, weights: ndarray = None):
+    def __init__(self, R_filaments: ndarray, z_filaments: ndarray, weights: ndarray | float = None):
         assert R_filaments.size == z_filaments.size
         assert R_filaments.ndim == 1 and z_filaments.ndim == 1
         assert (R_filaments > 0.).all()
-        if weights is not None:
-            assert isclose(weights.sum(), 1.0)
+        if isinstance(weights, float):
+            self.weights = weights
+        elif isinstance(weights, ndarray):
             assert weights.ndim == 1
             assert weights.size == R_filaments.size
             self.weights = weights[None, :]
