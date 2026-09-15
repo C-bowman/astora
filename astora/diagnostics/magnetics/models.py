@@ -111,7 +111,7 @@ class PlasmaCurrentModel(DiagnosticModel):
         return predictions, jacobians
 
 
-class MidplanePressureModel(DiagnosticModel):
+class RadialPressureGradientModel(DiagnosticModel):
     def __init__(
         self,
         pressure_data,
