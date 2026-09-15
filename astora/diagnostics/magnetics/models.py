@@ -28,11 +28,13 @@ class FluxloopModel(DiagnosticModel):
 
         self.fields = Fields()
 
-    def predictions(self, ln_J: ndarray, coil_currents: ndarray):
+    def predictions(self, ln_J: ndarray, coil_currents: ndarray) -> ndarray:
         basis_currents = exp(ln_J)
         return self.basis_matrix @ basis_currents + self.coil_matrix @ coil_currents
 
-    def predictions_and_jacobians(self, ln_J: ndarray, coil_currents: ndarray):
+    def predictions_and_jacobians(
+        self, ln_J: ndarray, coil_currents: ndarray
+    ) -> tuple[ndarray, dict[str, ndarray]]:
         basis_currents = exp(ln_J)
         predictions = self.basis_matrix @ basis_currents + self.coil_matrix @ coil_currents
         jacobians = {
@@ -70,11 +72,13 @@ class FieldSensorModel(DiagnosticModel):
 
         self.fields = Fields()
 
-    def predictions(self, ln_J: ndarray, coil_currents: ndarray):
+    def predictions(self, ln_J: ndarray, coil_currents: ndarray) -> ndarray:
         basis_J = exp(ln_J)
         return self.basis_matrix @ basis_J + self.coil_matrix @ coil_currents
 
-    def predictions_and_jacobians(self, ln_J: ndarray, coil_currents: ndarray):
+    def predictions_and_jacobians(
+        self, ln_J: ndarray, coil_currents: ndarray
+    ) -> tuple[ndarray, dict[str, ndarray]]:
         basis_J = exp(ln_J)
         predictions = self.basis_matrix @ basis_J + self.coil_matrix @ coil_currents
         jacobians = {
@@ -93,10 +97,12 @@ class PlasmaCurrentModel(DiagnosticModel):
         )
         self.fields = Fields()
 
-    def predictions(self, ln_J: ndarray):
+    def predictions(self, ln_J: ndarray) -> ndarray:
         return exp(ln_J).sum() * self.basis.total_current
 
-    def predictions_and_jacobians(self, ln_J: ndarray) -> tuple[ndarray, dict[str, ndarray]]:
+    def predictions_and_jacobians(
+        self, ln_J: ndarray
+    ) -> tuple[ndarray, dict[str, ndarray]]:
         basis_I = exp(ln_J) * self.basis.total_current
         predictions = basis_I.sum()
         jacobians = {
@@ -127,13 +133,15 @@ class MidplanePressureModel(DiagnosticModel):
 
         self.fields = Fields()
 
-    def predictions(self, ln_J: ndarray, coil_currents: ndarray):
+    def predictions(self, ln_J: ndarray, coil_currents: ndarray) -> ndarray:
         basis_J = exp(ln_J)
         Bz = self.basis_Bz_matrix @ basis_J + self.coils_Bz_matrix @ coil_currents
         J = self.basis_J_matrix @ basis_J
         return J * Bz
 
-    def predictions_and_jacobians(self, ln_J: ndarray, coil_currents: ndarray):
+    def predictions_and_jacobians(
+        self, ln_J: ndarray, coil_currents: ndarray
+    ) -> tuple[ndarray, dict[str, ndarray]]:
         basis_J = exp(ln_J)
         Bz = self.basis_Bz_matrix @ basis_J + self.coils_Bz_matrix @ coil_currents
         J = self.basis_J_matrix @ basis_J
