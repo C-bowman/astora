@@ -3,7 +3,7 @@ from numpy import exp, sin, cos, ndarray
 from .data import FluxloopSpecs, FieldSensorSpecs
 from .coils import CoilSet
 from astora.mesh.basis import BasisFunction
-from midas.parameters import ParameterVector
+from midas.parameters import Fields, Parameters, ParameterVector
 from midas.models import DiagnosticModel
 
 
@@ -21,12 +21,12 @@ class FluxloopModel(DiagnosticModel):
         self.coil_matrix = self.coils.get_psi_matrix(R=self.specs.R, z=self.specs.z)
         self.basis_matrix = self.basis.get_psi_matrix(R=self.specs.R, z=self.specs.z)
 
-        self.parameters = [
+        self.parameters = Parameters(
             ParameterVector(name="ln_J", size=self.basis.n_basis),
-            ParameterVector(name="coil_currents", size=self.coils.n_coils)
-        ]
+            ParameterVector(name="coil_currents", size=self.coils.n_coils),
+        )
 
-        self.field_requests = []
+        self.fields = Fields()
 
     def predictions(self, ln_J: ndarray, coil_currents: ndarray):
         basis_currents = exp(ln_J)
@@ -63,12 +63,12 @@ class FieldSensorModel(DiagnosticModel):
         self.basis_matrix = (cos_t[:, None] * M_JR + sin_t[:, None] * M_Jz)
         self.coil_matrix = (cos_t[:, None] * M_IR + sin_t[:, None] * M_Iz)
 
-        self.parameters = [
+        self.parameters = Parameters(
             ParameterVector(name="ln_J", size=self.basis.n_basis),
-            ParameterVector(name="coil_currents", size=self.coils.n_coils)
-        ]
+            ParameterVector(name="coil_currents", size=self.coils.n_coils),
+        )
 
-        self.field_requests = []
+        self.fields = Fields()
 
     def predictions(self, ln_J: ndarray, coil_currents: ndarray):
         basis_J = exp(ln_J)
@@ -88,8 +88,10 @@ class PlasmaCurrentModel(DiagnosticModel):
     def __init__(self, basis: BasisFunction):
         self.basis = basis
 
-        self.parameters = [ParameterVector(name="ln_J", size=self.basis.n_basis)]
-        self.field_requests = []
+        self.parameters = Parameters(
+            ParameterVector(name="ln_J", size=self.basis.n_basis)
+        )
+        self.fields = Fields()
 
     def predictions(self, ln_J: ndarray):
         return exp(ln_J).sum() * self.basis.total_current
@@ -118,29 +120,29 @@ class MidplanePressureModel(DiagnosticModel):
         self.basis_Bz_matrix = self.basis.get_Bz_matrix(R=self.data.R, z=self.data.z)
         self.basis_J_matrix = self.basis.get_interpolator_matrix(R=self.data.R, z=self.data.z)
 
-        self.parameters = [
+        self.parameters = Parameters(
             ParameterVector(name="ln_J", size=self.basis.n_basis),
-            ParameterVector(name="coil_currents", size=self.coils.n_coils)
-        ]
+            ParameterVector(name="coil_currents", size=self.coils.n_coils),
+        )
 
-        self.field_requests = []
+        self.fields = Fields()
 
     def predictions(self, ln_J: ndarray, coil_currents: ndarray):
         basis_J = exp(ln_J)
         Bz = self.basis_Bz_matrix @ basis_J + self.coils_Bz_matrix @ coil_currents
         J = self.basis_J_matrix @ basis_J
-        grad_p = J * Bz / self.data.R
-        predictions = None
-        return predictions
+        return J * Bz
 
     def predictions_and_jacobians(self, ln_J: ndarray, coil_currents: ndarray):
         basis_J = exp(ln_J)
         Bz = self.basis_Bz_matrix @ basis_J + self.coils_Bz_matrix @ coil_currents
         J = self.basis_J_matrix @ basis_J
-        grad_p = J * Bz / self.data.R
-        predictions = None
+        predictions = J * Bz
         jacobians = {
-            "ln_J": None,
-            "coil_currents": None
+            "ln_J": (
+                self.basis_J_matrix * Bz[:, None]
+                + self.basis_Bz_matrix * J[:, None]
+            ) * basis_J[None, :],
+            "coil_currents": self.coils_Bz_matrix * J[:, None],
         }
         return predictions, jacobians
