@@ -1,4 +1,4 @@
-from numpy import ndarray, zeros, isclose
+from numpy import ndarray, zeros
 from abc import ABC, abstractmethod
 from astora.diagnostics.magnetics.fields import psi_from_Jtor
 
@@ -31,7 +31,7 @@ class PoloidalFieldCoil(BaseFieldCoil):
             assert weights.size == R_filaments.size
             self.weights = weights[None, :]
         else:
-            self.weights = 1 / R_filaments.size
+            self.weights = 1.0
 
         self.R_fil = R_filaments
         self.z_fil = z_filaments
@@ -61,7 +61,6 @@ class CoilCircuit(BaseFieldCoil):
 class CoilSet:
     def __init__(self, coils: list[BaseFieldCoil]):
         self.coils = coils
-        print(self.coils)
         self.n_coils = len(coils)
 
     def psi(self, currents: ndarray, R: ndarray, z: ndarray) -> ndarray:
