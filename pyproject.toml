@@ -27,8 +27,9 @@ classifiers = [
 
 requires-python = ">=3.10"
 dependencies = [
+    "matplotlib >= 3.5",
     "numpy >= 1.20",
-    "scipy >= 1.6.3",
+    "scipy >= 1.11",
     "midas-fusion >= 0.3.2",
     "tokamesh >= 0.5.4"
 ]
