@@ -1,4 +1,4 @@
-from numpy import exp, sin, cos, ndarray
+from numpy import exp, sin, cos, ndarray, pi
 
 from .data import FluxloopSpecs, FieldSensorSpecs
 from .coils import CoilSet
@@ -18,8 +18,8 @@ class FluxloopModel(DiagnosticModel):
         self.basis = basis
         self.coils = coil_set
 
-        self.coil_matrix = self.coils.get_psi_matrix(R=self.specs.R, z=self.specs.z)
-        self.basis_matrix = self.basis.get_psi_matrix(R=self.specs.R, z=self.specs.z)
+        self.coil_matrix = self.coils.get_psi_matrix(R=self.specs.R, z=self.specs.z) * (2 * pi)
+        self.basis_matrix = self.basis.get_psi_matrix(R=self.specs.R, z=self.specs.z) * (2 * pi)
 
         self.parameters = Parameters(
             ParameterVector(name="ln_J", size=self.basis.n_basis),
@@ -107,50 +107,5 @@ class PlasmaCurrentModel(DiagnosticModel):
         predictions = basis_I.sum()
         jacobians = {
             "ln_J": basis_I.reshape(1, self.basis.n_basis),
-        }
-        return predictions, jacobians
-
-
-class RadialPressureGradientModel(DiagnosticModel):
-    def __init__(
-        self,
-        pressure_data,
-        basis: BasisFunction,
-        coil_set: CoilSet
-    ):
-        self.data = pressure_data
-        self.basis = basis
-        self.coils = coil_set
-
-        self.coils_Bz_matrix = self.coils.get_Bz_matrix(R=self.data.R, z=self.data.z)
-        self.basis_Bz_matrix = self.basis.get_Bz_matrix(R=self.data.R, z=self.data.z)
-        self.basis_J_matrix = self.basis.get_interpolator_matrix(R=self.data.R, z=self.data.z)
-
-        self.parameters = Parameters(
-            ParameterVector(name="ln_J", size=self.basis.n_basis),
-            ParameterVector(name="coil_currents", size=self.coils.n_coils),
-        )
-
-        self.fields = Fields()
-
-    def predictions(self, ln_J: ndarray, coil_currents: ndarray) -> ndarray:
-        basis_J = exp(ln_J)
-        Bz = self.basis_Bz_matrix @ basis_J + self.coils_Bz_matrix @ coil_currents
-        J = self.basis_J_matrix @ basis_J
-        return J * Bz
-
-    def predictions_and_jacobians(
-        self, ln_J: ndarray, coil_currents: ndarray
-    ) -> tuple[ndarray, dict[str, ndarray]]:
-        basis_J = exp(ln_J)
-        Bz = self.basis_Bz_matrix @ basis_J + self.coils_Bz_matrix @ coil_currents
-        J = self.basis_J_matrix @ basis_J
-        predictions = J * Bz
-        jacobians = {
-            "ln_J": (
-                self.basis_J_matrix * Bz[:, None]
-                + self.basis_Bz_matrix * J[:, None]
-            ) * basis_J[None, :],
-            "coil_currents": self.coils_Bz_matrix * J[:, None],
         }
         return predictions, jacobians
