@@ -1,8 +1,36 @@
 from abc import ABC, abstractmethod
-from numpy import array, sqrt, ones, ndarray, zeros
+from dataclasses import dataclass
+from numpy import array, sqrt, ones, ndarray, zeros, load
 from tokamesh.construction import refine_mesh
 from tokamesh import TriangularMesh
 from astora.diagnostics.magnetics.fields import psi_from_Jtor
+
+
+@dataclass
+class BasisInfo:
+    R: ndarray
+    z: ndarray
+    triangles: ndarray
+    resolution: float
+    refinement_level: int
+    basis_psi: ndarray
+    coils_psi: ndarray
+
+    def __post_init__(self):
+        self.size = self.R.size
+
+    @classmethod
+    def load(cls, filepath: str):
+        data = load(filepath)
+        return cls(
+            R=data["R"],
+            z=data["z"],
+            triangles=data["triangles"],
+            resolution=data["resolution"],
+            refinement_level=data["refinement_level"],
+            basis_psi=data["basis_psi"],
+            coils_psi=data["coils_psi"]
+        )
 
 
 def hexagon_mesh(resolution=1.0) -> TriangularMesh:
