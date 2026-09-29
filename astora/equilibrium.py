@@ -1,6 +1,6 @@
-from numpy import arange, array, ndarray, repeat, tile, exp
+from numpy import arange, array, ndarray, repeat, tile, exp, asarray, full, isfinite
 from scipy.constants import mu_0
-from scipy.sparse import csr_array
+from scipy.sparse import csr_array, sparray
 
 from astora.diagnostics.magnetics.coils import CoilSet
 from astora.mesh.basis import BasisFunction
@@ -49,12 +49,13 @@ class ForceBalancePrior(BasePrior):
         coordinates: dict[str, ndarray],
         basis: BasisFunction,
         coil_set: CoilSet,
-        sigma: ndarray
+        sigma: ndarray,
+        delta: float = 1e-3,
     ):
         self.name = name
         self.coordinates = coordinates
         self.R, self.z = coordinates["R"], coordinates["z"]
-        self.dR, self.dz = 1e-3, 1e-3
+        self.dR, self.dz = delta, delta
         self.basis = basis
         self.coil_set = coil_set
         self.sigma = sigma
@@ -90,20 +91,46 @@ class ForceBalancePrior(BasePrior):
             FieldRequest(name="F", coordinates=field_coordinates),
         )
 
-    def probability(
+        self.inv_mu0_R = 1.0 / (mu_0 * self.R)
+
+    def force_vectors(
         self,
         ln_J: ndarray,
-        coil_currents: ndarray, 
+        coil_currents: ndarray,
         pressure: ndarray,
         F: ndarray,
     ):
-        inverse_mu0_R = 1.0 / (mu_0 * self.R)
+        dP_dR = self.d_dR @ pressure
+        dP_dz = self.d_dz @ pressure
+
+        J_R = -self.inv_mu0_R * (self.d_dz @ F)
+        J_z = self.inv_mu0_R * (self.d_dR @ F)
+        basis_J = exp(ln_J)
+        J_phi = self.plasma_J @ basis_J
+
+        B_R = self.coil_Br @ coil_currents + self.plasma_Br @ basis_J
+        B_z = self.coil_Bz @ coil_currents + self.plasma_Bz @ basis_J
+        B_phi = (self.centers @ F) / self.R
+
+        return asarray([
+            J_phi * B_z - J_z * B_phi - dP_dR,
+            J_R * B_phi - J_phi * B_R - dP_dz,
+            J_z * B_R - J_R * B_z
+        ])
+
+    def probability(
+        self,
+        ln_J: ndarray,
+        coil_currents: ndarray,
+        pressure: ndarray,
+        F: ndarray,
+    ):
 
         dP_dR = self.d_dR @ pressure
         dP_dz = self.d_dz @ pressure
 
-        J_R = -inverse_mu0_R * (self.d_dz @ F)
-        J_z = inverse_mu0_R * (self.d_dR @ F)
+        J_R = -self.inv_mu0_R * (self.d_dz @ F)
+        J_z = self.inv_mu0_R * (self.d_dR @ F)
         basis_J = exp(ln_J)
         J_phi = self.plasma_J @ basis_J
 
@@ -121,17 +148,16 @@ class ForceBalancePrior(BasePrior):
     def gradients(
         self,
         ln_J: ndarray,
-        coil_currents: ndarray, 
+        coil_currents: ndarray,
         pressure: ndarray,
         F: ndarray,
     ) -> dict[str, ndarray]:
-        inverse_mu0_R = 1.0 / (mu_0 * self.R)
 
         dP_dR = self.d_dR @ pressure
         dP_dz = self.d_dz @ pressure
 
-        J_R = -inverse_mu0_R * (self.d_dz @ F)
-        J_z = inverse_mu0_R * (self.d_dR @ F)
+        J_R = -self.inv_mu0_R * (self.d_dz @ F)
+        J_z = self.inv_mu0_R * (self.d_dR @ F)
         basis_J = exp(ln_J)
         J_phi = self.plasma_J @ basis_J
 
@@ -189,8 +215,102 @@ class ForceBalancePrior(BasePrior):
                 + self.d_dz.T @ (-force_z_gradient)
             ),
             "F": (
-                self.d_dz.T @ (-inverse_mu0_R * J_R_gradient)
-                + self.d_dR.T @ (inverse_mu0_R * J_z_gradient)
+                self.d_dz.T @ (-self.inv_mu0_R * J_R_gradient)
+                + self.d_dR.T @ (self.inv_mu0_R * J_z_gradient)
                 + self.centers.T @ (B_phi_gradient / self.R)
             ),
         }
+
+
+class EquilibriumCurrentPrior(BasePrior):
+    """Constrain parameterized current density to Grad-Shafranov predictions."""
+
+    def __init__(
+        self,
+        name: str,
+        basis: BasisFunction,
+        coil_set: CoilSet,
+        sigma: float,
+    ):
+        self.name = name
+        self.R, self.z = basis.R_basis, basis.z_basis
+        self.basis = basis
+        self.coil_set = coil_set
+        self.sigma = sigma
+        self.weight = 1.0 / sigma**2
+
+        self.parameters = Parameters(
+            ParameterVector(name="ln_J", size=self.basis.n_basis),
+        )
+
+        field_coordinates = {"R": self.R, "z": self.z}
+        self.fields = Fields(
+            FieldRequest(name="p_prime", coordinates=field_coordinates),
+            FieldRequest(name="FF_prime", coordinates=field_coordinates),
+        )
+
+        self.inv_mu0_R = 1.0 / (mu_0 * self.R)
+
+    def equilibrium_currents(self, p_prime: ndarray, FF_prime: ndarray):
+        return self.R * p_prime + FF_prime * self.inv_mu0_R
+
+    def probability(
+        self,
+        ln_J: ndarray,
+        p_prime: ndarray,
+        FF_prime: ndarray
+    ) -> float:
+        dJ = exp(ln_J) - self.equilibrium_currents(p_prime, FF_prime)
+        return -0.5 * self.weight * (dJ**2).sum()
+
+    def gradients(
+        self,
+        ln_J: ndarray,
+        p_prime: ndarray,
+        FF_prime: ndarray
+    ) -> dict[str, ndarray]:
+        J = exp(ln_J)
+        dJ = J - self.equilibrium_currents(p_prime, FF_prime)
+        dJ_gradient = -self.weight * dJ
+
+        return {
+            "ln_J": J * dJ_gradient,
+            "p_prime": -self.R * dJ_gradient,
+            "FF_prime": -self.inv_mu0_R * dJ_gradient,
+        }
+
+
+
+def equilateral_mesh_integrator(
+    triangles: ndarray,
+    edge_length: float
+) -> sparray:
+    """Build exact per-triangle integrators for a piecewise-linear field.
+
+    The returned sparse array has shape ``(n_triangles, n_vertices)``.
+    Multiplying it by field values at the mesh vertices returns the integral
+    over each equilateral triangle separately.
+    """
+    triangles = asarray(triangles)
+    if triangles.ndim != 2 or triangles.shape[1] != 3:
+        raise ValueError("triangles must have shape (n_triangles, 3).")
+    if triangles.shape[0] == 0:
+        raise ValueError("triangles must contain at least one triangle.")
+    if triangles.dtype.kind not in "iu":
+        raise TypeError("triangles must contain integer vertex indices.")
+    if (triangles < 0).any():
+        raise ValueError("triangle vertex indices must be non-negative.")
+    if not isfinite(edge_length) or edge_length <= 0.0:
+        raise ValueError("edge_length must be positive and finite.")
+
+    n_vertices = int(triangles.max()) + 1
+    triangle_area = 0.25 * 3**0.5 * edge_length**2
+    vertex_weight = triangle_area / 3.0
+    columns = triangles.ravel()
+    rows = repeat(arange(triangles.shape[0]), 3)
+    weights = full(columns.size, vertex_weight, dtype=float)
+
+    return csr_array(
+        (weights, (rows, columns)),
+        shape=(triangles.shape[0], n_vertices),
+    )
