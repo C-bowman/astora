@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from numpy import exp, ndarray, asarray, full_like, log
+from numpy import exp, ndarray, asarray, full_like, log, arctan, pi
 from scipy.sparse import diags_array, sparray
 from midas.parameters import ParameterVector
 
@@ -58,6 +58,52 @@ class LogisticFlux(FluxTransform):
 
         return u, jacobians
 
+
+class CauchyCDF(FluxTransform):
+    """Map flux to (0, 1) using parameters ``(psi0, ln_dpsi)``.
+
+    The scale is chosen so the midpoint slope is ``1 / (4 * dpsi)``, matching
+    :class:`LogisticFlux` for the same positive width ``dpsi = exp(ln_dpsi)``.
+    """
+
+    def __init__(self, name: str):
+        assert isinstance(name, str) and len(name) > 0
+        self.transform_parameters = ParameterVector(name, 2)
+
+    def transform(
+        self,
+        psi: ndarray,
+        parameters: ndarray,
+    ) -> ndarray:
+        psi0, ln_dpsi = parameters
+        inverse_width = exp(-ln_dpsi)
+        z = 0.25 * pi * (psi - psi0) * inverse_width
+        return 0.5 + arctan(z) / pi
+
+    def transform_and_jacobians(
+        self,
+        psi: ndarray,
+        parameters: ndarray,
+    ) -> tuple[ndarray, dict[str, ndarray | sparray]]:
+        psi0, ln_dpsi = parameters
+        inverse_width = exp(-ln_dpsi)
+        z = 0.25 * pi * (psi - psi0) * inverse_width
+
+        u = 0.5 + arctan(z) / pi
+        du_dz = 1.0 / (pi * (1.0 + z**2))
+        du_dpsi = 0.25 * inverse_width / (1.0 + z**2)
+
+        jacobians = {
+            "psi": diags_array(du_dpsi),
+            "parameters": asarray(
+                (
+                    -du_dpsi,
+                    -du_dz * z,
+                )
+            ).T,
+        }
+
+        return u, jacobians
 
 
 class GenLogFlux(FluxTransform):
